@@ -80,7 +80,7 @@ OUTPUT_SCHEMA = """{
   "issues": [{"title": "...", "evidence": "...", "impact": "..."}],
   "suggestions": [{"action": "...", "method": "..."}],
   "special_checks": [{"name": "...", "triggered": false, "explanation": "..."}],
-  "subject_details": {}
+  "subject_details": {各学科不同，见下方学科提示词}
 }"""
 
 ANALYSIS_SCHEMA = """{
@@ -467,16 +467,16 @@ def build_grading_prompt(data: dict) -> str:
 {data['content']}
 
 【输出协议】
-1. 只能输出一个合法 JSON 对象，不得输出 Markdown、代码围栏、前言、后记或 JSON 之外的任何字符。
-2. 所有字符串必须使用双引号；不得包含注释、尾随逗号、NaN 或 Infinity。
-3. dimensions 的维度名称、满分和顺序必须与本学科量规完全一致。
-4. dimensions 中 score 之和必须严格等于 total_score，且不得超过各项 max_score。
-5. evidence 必须来自学生作业中的真实内容；不能编造原文。
-6. strengths 至少2项，issues 至少2项，suggestions 至少3项。
-7. subject_details 必须严格使用本学科提示词指定的结构。
-8. 无法确定的信息使用空字符串、空数组或明确的"需教师复核"，不要猜测。
+1. 只输出一个合法 JSON 对象，不要 Markdown 代码围栏、不要前言后记。
+2. 学生作业原文中的双引号必须转义为 \\\"，换行必须转义为 \\n，反斜杠转义为 \\\\。
+3. JSON 内不得包含尾随逗号、注释、NaN 或 Infinity（用 null 替代）。
+4. dimensions 名称与满分必须与本学科量规完全一致，score 之和必须等于 total_score。
+5. evidence 必须从学生作业原文中直接引用，不得编造。
+6. strengths、issues、suggestions 尽量各提供2-3项，确实没有时可给空数组 []。
+7. subject_details 必须严格按本学科提示词指定的字段填写，不要省略任何字段。
+8. 不确定的信息填空字符串 "" 或明确写"需教师复核"，不要编造。
 
-通用 JSON 结构：
+通用 JSON 结构（subject_details 具体字段见学科提示词）：
 {OUTPUT_SCHEMA}"""
 
 
