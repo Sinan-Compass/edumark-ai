@@ -710,6 +710,24 @@ for key, val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
+# 启动时校验缓存格式，防止旧版本脏数据导致 KeyError
+_cache = st.session_state.get("cache", {})
+if isinstance(_cache, dict):
+    for subj in SUBJECT_NAMES:
+        if subj not in _cache or not isinstance(_cache[subj], list):
+            _cache[subj] = []
+        else:
+            # 清理无 report 或 report 缺少 total_score 的异常记录
+            _cache[subj] = [
+                r for r in _cache[subj]
+                if isinstance(r, dict) and isinstance(r.get("report"), dict) and "total_score" in r["report"]
+            ]
+    st.session_state["cache"] = _cache
+# 校验 current_report
+_rpt = st.session_state.get("current_report")
+if _rpt is not None and (not isinstance(_rpt, dict) or "dimensions" not in _rpt):
+    st.session_state["current_report"] = None
+
 # =============================================================================
 # 侧边栏
 # =============================================================================
@@ -978,8 +996,9 @@ with tab1:
             st.info("批改报告将在这里生成。\n\n提交左侧作业后，系统会依据所选学科量规给出评分、问题诊断与修改建议。")
         else:
             display_subject = report.get("subject", subject)
-            max_total = sum(d["max_score"] for d in report.get("dimensions", [])) or 100
-            pct = max(0, min(100, report["total_score"] / max_total * 100)) if max_total > 0 else 0
+            total_score = report.get("total_score", 0) if isinstance(report, dict) else 0
+            max_total = sum(d.get("max_score", 0) for d in report.get("dimensions", [])) or 100
+            pct = max(0, min(100, total_score / max_total * 100)) if max_total > 0 else 0
 
             # 总分卡片
             st.markdown(f"""
@@ -1181,14 +1200,14 @@ with tab2:
                 with col:
                     with st.container(border=True):
                         st.caption(f"{r['subject']} · {r.get('grade', grade_from_score(r['report'].get('total_score',0)))}")
-                        score = r["report"].get("total_score", "--")
+                        score = (r.get("report") or {}).get("total_score", "--") if isinstance(r.get("report"), dict) else "--"
                         st.markdown(f"### {score}")
                         st.markdown(f"**{r['title']}**")
                         st.caption(f"{r['studentId']} · {r['createdAt'][:10]}")
                         c_act1, c_act2 = st.columns(2)
                         with c_act1:
                             if st.button("📖 查看", key=f"view_{r['id']}", use_container_width=True):
-                                st.session_state.current_report = r["report"]
+                                st.session_state.current_report = r.get("report") if isinstance(r.get("report"), dict) else None
                                 st.session_state.last_request_prompt = r.get("prompt", "")
                                 st.session_state.raw_result = r.get("rawResponse", "")
                                 st.toast("已恢复批改结果")
@@ -1242,7 +1261,7 @@ with tab3:
 
         # 选择统计
         if selected:
-            avg = sum(r["report"].get("total_score", 0) for r in selected) / len(selected)
+            avg = sum((r.get("report") or {}).get("total_score", 0) for r in selected) / len(selected)
             c1, c2 = st.columns(2)
             with c1:
                 st.metric("已选作业", len(selected))
