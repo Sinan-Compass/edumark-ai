@@ -10,7 +10,6 @@ from datetime import datetime
 from io import BytesIO
 
 import streamlit as st
-import streamlit.components.v1 as components
 from openai import OpenAI
 
 # =============================================================================
@@ -559,74 +558,6 @@ def call_model(prompt: str, api_key: str, base_url: str, model: str) -> str:
     return extract_response_text(response)
 
 
-def call_model_stream(prompt: str, api_key: str, base_url: str, model: str) -> str:
-    """流式调用 API，使用 st.write_stream 增量更新，不会触发全页刷新."""
-    is_zhipu_legacy = any(m in model for m in ["glm-4-plus", "glm-4-flash", "glm-4-air"])
-    is_deepseek_flash = "flash" in model
-    if is_zhipu_legacy:
-        max_tokens_val = 4000
-    elif is_deepseek_flash:
-        max_tokens_val = 2048
-    else:
-        max_tokens_val = 8192
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=180.0,
-    )
-
-    accumulated = []
-
-    try:
-        stream = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=max_tokens_val,
-            stream=True,
-        )
-
-        def chunk_generator():
-            for chunk in stream:
-                delta = chunk.choices[0].delta
-                if delta.content:
-                    accumulated.append(delta.content)
-                    yield delta.content
-
-        # write_stream 通过 WebSocket 增量更新，不引发全页重渲染
-        st.info("⏳ 模型正在思考，约 10-30 秒后开始输出……全部生成完毕后将自动整理为格式化报告，请耐心等待。")
-        with st.container(border=True):
-            st.caption("📝 实时生成中……")
-            st.write_stream(chunk_generator)
-
-        full_text = "".join(accumulated)
-        if not full_text.strip():
-            prompt_len = len(prompt)
-            raise ValueError(
-                f"模型返回了空内容（输入 {prompt_len} 字符，约 {prompt_len//3} tokens）。可能原因：\n"
-                "1. 输入过长超出上下文窗口 → 减少已选作业数量（2-5份为宜）\n"
-                "2. 内容触发安全过滤 → 检查作业中是否有敏感词\n"
-                "3. 模型不支持超长输入 → 切换为 glm-4-long 或 deepseek-v4-pro"
-            )
-        return full_text
-
-    except Exception as e:
-        msg = str(e)
-        if "401" in msg or "unauthorized" in msg.lower() or "invalid" in msg.lower():
-            raise ValueError(f"API Key 无效或无权限：{msg}")
-        elif "429" in msg or "rate" in msg.lower():
-            raise ValueError(f"请求过于频繁，请稍后重试：{msg}")
-        elif "404" in msg or "not found" in msg.lower():
-            raise ValueError(f"模型 {model} 不存在或 Base URL 不正确。请检查提供商和模型名称是否匹配。\n{msg}")
-        elif "timeout" in msg.lower() or "timed out" in msg.lower():
-            raise ValueError(f"请求超时。可尝试切换更快的模型（如 flash 系列）。\n{msg}")
-        elif "connection" in msg.lower() or "refused" in msg.lower():
-            raise ValueError(f"无法连接 API 服务器，请检查 Base URL 和网络连接。\n{msg}")
-        else:
-            raise ValueError(f"API 调用失败：{msg}")
-
-
 def parse_file(uploaded_file) -> str:
     """解析上传文件，返回文本内容."""
     if uploaded_file is None:
@@ -981,9 +912,9 @@ with tab1:
                 prompt = build_grading_prompt(data)
                 st.session_state.last_request_prompt = prompt
 
-                with st.spinner("正在连接模型……"):
+                with st.spinner("正在批改，预计 30-90 秒……"):
                     try:
-                        raw = call_model_stream(prompt, api_key, base_url, model)
+                        raw = call_model(prompt, api_key, base_url, model)
                         st.session_state.raw_result = raw
                         report = parse_json_response(raw)
                         report = validate_grading_report(report, data)
@@ -1308,9 +1239,9 @@ with tab3:
                 st.session_state.last_analysis_prompt = prompt
                 st.session_state.last_request_prompt = prompt
 
-                with st.spinner("正在连接模型……"):
+                with st.spinner("正在批改，预计 30-90 秒……"):
                     try:
-                        raw = call_model_stream(prompt, api_key, base_url, model)
+                        raw = call_model(prompt, api_key, base_url, model)
                         st.session_state.raw_result = raw
                         analysis_report = parse_json_response(raw)
                         analysis_report["report_type"] = "analysis"
