@@ -942,15 +942,15 @@ with tab1:
                         st.session_state.cache = cache
                         st.session_state.active_history_subject = subject
 
-                        st.toast("✅ JSON 批改完成，请教师复核")
-                        st.rerun()
+                        # 不调用 st.rerun()，直接在当前页显示报告
+                        st.success("✅ 批改完成，请教师复核")
 
                     except Exception as e:
                         st.error(f"批改失败：{e}")
                         if not st.session_state.raw_result:
                             st.info("请在侧边栏「提示词中心」查看发送给模型的完整请求。")
 
-        # 显示报告
+        # 显示报告（提交后直接渲染，无需 rerun）
         report = st.session_state.current_report
         if report is None:
             st.info("批改报告将在这里生成。\n\n提交左侧作业后，系统会依据所选学科量规给出评分、问题诊断与修改建议。")
@@ -1248,8 +1248,8 @@ with tab3:
                         analysis_report.setdefault("subject", analysis_subject)
                         analysis_report["sample_size"] = int(analysis_report.get("sample_size") or len(selected))
                         st.session_state.current_report = analysis_report
-                        st.toast("学情分析已生成，请复核统计")
-                        st.rerun()
+                        st.success("✅ 学情分析已生成，请复核统计")
+
                     except Exception as e:
                         st.error(f"分析失败：{e}")
 
