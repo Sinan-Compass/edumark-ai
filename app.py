@@ -482,13 +482,33 @@ def build_grading_prompt(data: dict) -> str:
 
 
 def build_analysis_prompt(subject: str, records: list) -> str:
+    # 精简报告：去掉 evidence/comment/subject_details 等长文本，避免 prompt 超限
+    slim_reports = []
+    for r in records:
+        rpt = r["report"]
+        slim = {
+            "subject": rpt.get("subject"),
+            "student_id": rpt.get("student_id"),
+            "title": rpt.get("title"),
+            "total_score": rpt.get("total_score"),
+            "grade": rpt.get("grade"),
+            "summary": rpt.get("summary", ""),
+            "dimensions": [
+                {"name": d.get("name"), "max_score": d.get("max_score"), "score": d.get("score")}
+                for d in rpt.get("dimensions", [])
+            ],
+            "strengths": [{"title": s.get("title")} for s in rpt.get("strengths", [])],
+            "issues": [{"title": i.get("title"), "impact": i.get("impact")} for i in rpt.get("issues", [])],
+        }
+        slim_reports.append(slim)
+
     return f"""{ANALYSIS_PROMPT_BASE}
 
 【当前学科专项关注】
 {SUBJECT_CONFIGS[subject]['analysis_focus']}
 
-【输入记录】
-{json.dumps([r['report'] for r in records], ensure_ascii=False, indent=2)}"""
+【输入记录（精简版，仅含分数和摘要，完整报告请参考历史记录）】
+{json.dumps(slim_reports, ensure_ascii=False, indent=2)}"""
 
 
 def extract_response_text(resp) -> str:
@@ -580,7 +600,16 @@ def call_model_stream(prompt: str, api_key: str, base_url: str, model: str) -> s
             st.caption("📝 实时生成中……")
             st.write_stream(chunk_generator)
 
-        return "".join(accumulated)
+        full_text = "".join(accumulated)
+        if not full_text.strip():
+            prompt_len = len(prompt)
+            raise ValueError(
+                f"模型返回了空内容（输入 {prompt_len} 字符，约 {prompt_len//3} tokens）。可能原因：\n"
+                "1. 输入过长超出上下文窗口 → 减少已选作业数量（2-5份为宜）\n"
+                "2. 内容触发安全过滤 → 检查作业中是否有敏感词\n"
+                "3. 模型不支持超长输入 → 切换为 glm-4-long 或 deepseek-v4-pro"
+            )
+        return full_text
 
     except Exception as e:
         msg = str(e)
